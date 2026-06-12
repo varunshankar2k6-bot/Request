@@ -1,44 +1,83 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
+from sqlalchemy.orm import Session
+
 from database import SessionLocal, engine, Base
-from models import User, Content
-from schemas import UserCreate, ContentCreate
-import models
+from models import Student, StudentProfile
+from schemas import (
+    StudentCreate,
+    StudentProfileCreate,
+    StudentResponse
+)
+
 app = FastAPI()
+
 Base.metadata.create_all(bind=engine)
-@app.post("/users")
-def create_user(user: UserCreate):
+
+
+def get_db():
     db = SessionLocal()
-    new_user = User(
-        name=user.name,
-        email=user.email
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@app.post("/students", response_model=StudentResponse)
+def create_student(
+    student: StudentCreate,
+    db: Session = Depends(get_db)
+):
+
+    db_student = Student(
+        name=student.name,
+        email=student.email
     )
-    db.add(new_user)
+
+    db.add(db_student)
     db.commit()
-    db.refresh(new_user)
-    user_id = new_user.id
-    db.close()
-    return {
-        "message": "User created successfully",
-        "user_id": user_id
-    }
-@app.post("/content")
-def create_content(content: ContentCreate):
-    db = SessionLocal()
-    new_content = Content(
-        title=content.title,
-        body=content.body,
-        user_id=content.user_id
+    db.refresh(db_student)
+
+    return db_student
+
+
+@app.post("/students/{student_id}/profile")
+def create_profile(
+    student_id: int,
+    profile: StudentProfileCreate,
+    db: Session = Depends(get_db)
+):
+
+    student = db.query(Student).filter(
+        Student.id == student_id
+    ).first()
+
+    if not student:
+        return {"error": "Student not found"}
+
+    db_profile = StudentProfile(
+        address=profile.address,
+        phone=profile.phone,
+        student_id=student_id
     )
-    db.add(new_content)
+
+    db.add(db_profile)
     db.commit()
-    db.refresh(new_content)
-    content_id = new_content.id
-    title = new_content.title
-    body = new_content.body
-    db.close()
-    return {
-        "message": "Content added successfully",
-        "content_id": content_id,
-        "title": title,
-        "body": body
-    }
+    db.refresh(db_profile)
+
+    return db_profile
+
+
+@app.get(
+    "/students/{student_id}",
+    response_model=StudentResponse
+)
+def get_student(
+    student_id: int,
+    db: Session = Depends(get_db)
+):
+
+    student = db.query(Student).filter(
+        Student.id == student_id
+    ).first()
+
+    return student
